@@ -28,7 +28,7 @@ Make sure to enable model access for `Amazon Nova Lite` and to fill in the promp
 Deployment can be done through the aws sam cli.
 First build the application with `sam build`.
 
-Then you can deploy by calling `sam deploy`. If its your first time deploying you can call `sam deploy --guided` to set the initial parameters
+Then you can deploy by calling `sam deploy`. If its your first time deploying you can call `sam deploy --guided --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM` to set the initial parameters
 
 ## Acting on Processing results
 Processing results are stored in 2 Amazon SQS queues a Processed Queue where the successfully processed items are stored an a FailedQueue that notifies you of failed activities.

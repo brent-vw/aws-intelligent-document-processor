@@ -173,8 +173,7 @@
             "Type": "Map",
             "ItemProcessor": {
                 "ProcessorConfig": {
-                    "Mode": "DISTRIBUTED",
-                    "ExecutionType": "STANDARD"
+                    "Mode": "INLINE"
                 },
                 "StartAt": "ProcessFile",
                 "States": {
@@ -269,17 +268,8 @@
                 }
             },
             "Next": "Success",
-            "Label": "Map",
-            "MaxConcurrency": 1000,
-            "ItemSelector": {
-                "ExecutionId.$": "$$.Map.Item.Value.ExecutionId",
-                "WorkBucket.$": "$WorkBucket",
-                "WorkPrefix.$": "$WorkPrefix",
-                "MapIndex.$": "$$.Map.Item.Index",
-                "Source.$": "$$.Map.Item.Value.Source",
-                "Pages.$": "$$.Map.Item.Value.Pages"
-            },
-            "InputPath": "$.Documents"
+            "InputPath": "$.Documents",
+            "MaxConcurrency": 10
         },
         "Wait": {
             "Type": "Wait",

@@ -106,8 +106,11 @@ Resources:
         DataAccessRoleArn: !GetAtt ComprehendServiceRole.Arn
         TrainBucket: !Ref TrainBucket
         ClassifierParameter: !Ref ClassifierArnParam
+      Tracing:
+        Enabled: true
       Policies:
         - arn:aws:iam::aws:policy/ComprehendFullAccess
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
         - TextractPolicy: {}
         - S3FullAccessPolicy:
             BucketName: !Ref TrainBucket
@@ -137,12 +140,14 @@ Resources:
       Runtime: python3.12
       MemorySize: 4096
       Timeout: 900
+      Tracing: Active
       EphemeralStorage:
         Size: 512
       Architectures:
         - arm64
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
         - S3FullAccessPolicy:
             BucketName: !Ref ResultBucket
 
@@ -161,6 +166,7 @@ Resources:
         - arm64
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
         - S3FullAccessPolicy:
             BucketName: !Ref ResultBucket
 
@@ -174,10 +180,12 @@ Resources:
       Runtime: python3.12
       MemorySize: 4096
       Timeout: 900
+      Tracing: Active
       Architectures:
         - arm64
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
         - Statement:
             - Effect: Allow
               Action:
@@ -200,6 +208,8 @@ Resources:
         ProcessFileFn: !Ref ProcessFileFn
         PromptDocumentInfoFn: !Ref PromptDocumentInfoFn
         ResultBucket: !Ref ResultBucket
+      Tracing:
+        Enabled: true
       Events:
         StateChange:
           Type: EventBridgeRule
@@ -216,6 +226,7 @@ Resources:
                     - !Ref ProcessBucket
       Policies:
         - arn:aws:iam::aws:policy/ComprehendReadOnly
+        - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
         - TextractPolicy: {}
         - SSMParameterReadPolicy:
             ParameterName: !Ref ClassifierArnParam
