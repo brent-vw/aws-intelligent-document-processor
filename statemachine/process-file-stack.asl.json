@@ -1,0 +1,297 @@
+{
+    "StartAt": "Initialize Result",
+    "States": {
+        "Initialize Result": {
+            "Type": "Task",
+            "Parameters": {
+                "Bucket": "${ResultBucket}",
+                "CopySource.$": "States.Format('{}/{}', $.detail.bucket.name, $.detail.object.key)",
+                "Key.$": "States.Format('{}/source.pdf', $$.Execution.Name)"
+            },
+            "Resource": "arn:aws:states:::aws-sdk:s3:copyObject",
+            "Next": "GetParameter",
+            "Assign": {
+                "WorkBucket": "${ResultBucket}",
+                "WorkPrefix.$": "$$.Execution.Name",
+                "WorkFolder.$": "States.Format('s3://{}/{}/','${ResultBucket}', $$.Execution.Name)",
+                "SourceFile.$": "States.Format('s3://{}/{}/source.pdf', '${ResultBucket}', $$.Execution.Name)"
+            }
+        },
+        "GetParameter": {
+            "Type": "Task",
+            "Next": "StartDocumentClassificationJob",
+            "Parameters": {
+                "Name": "${ClassifierParameter}"
+            },
+            "Resource": "arn:aws:states:::aws-sdk:ssm:getParameter",
+            "ResultPath": "$.ClassificationModelParam"
+        },
+        "StartDocumentClassificationJob": {
+            "Type": "Task",
+            "Parameters": {
+                "DataAccessRoleArn": "${DataAccessRoleArn}",
+                "DocumentClassifierArn.$": "$.ClassificationModelParam.Parameter.Value",
+                "InputDataConfig": {
+                    "S3Uri.$": "$SourceFile",
+                    "InputFormat": "ONE_DOC_PER_FILE"
+                },
+                "OutputDataConfig": {
+                    "S3Uri.$": "$WorkFolder"
+                }
+            },
+            "Resource": "arn:aws:states:::aws-sdk:comprehend:startDocumentClassificationJob",
+            "Next": "DescribeDocumentClassificationJob",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "BackoffRate": 2,
+                    "MaxAttempts": 100,
+                    "IntervalSeconds": 1,
+                    "JitterStrategy": "FULL"
+                }
+            ]
+        },
+        "DescribeDocumentClassificationJob": {
+            "Type": "Task",
+            "Parameters": {
+                "JobId.$": "$.JobId"
+            },
+            "Resource": "arn:aws:states:::aws-sdk:comprehend:describeDocumentClassificationJob",
+            "Next": "Choice",
+            "ResultSelector": {
+                "ExecutionId.$": "$$.Execution.Name",
+                "WorkFolder.$": "$WorkFolder",
+                "DocumentClassificationJobProperties.$": "$.DocumentClassificationJobProperties"
+            }
+        },
+        "Choice": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Or": [
+                        {
+                            "Variable": "$.DocumentClassificationJobProperties.JobStatus",
+                            "StringMatches": "SUBMITTED"
+                        },
+                        {
+                            "Variable": "$.DocumentClassificationJobProperties.JobStatus",
+                            "StringMatches": "IN_PROGRESS"
+                        },
+                        {
+                            "Variable": "$.DocumentClassificationJobProperties.JobStatus",
+                            "StringMatches": "STOP_REQUESTED"
+                        }
+                    ],
+                    "Next": "Wait"
+                },
+                {
+                    "Or": [
+                        {
+                            "Variable": "$.DocumentClassificationJobProperties.JobStatus",
+                            "StringMatches": "COMPLETED"
+                        },
+                        {
+                            "Variable": "$.DocumentClassificationJobProperties.JobStatus",
+                            "StringMatches": "STOPPED"
+                        }
+                    ],
+                    "Next": "SplitFiles"
+                },
+                {
+                    "Variable": "$.DocumentClassificationJobProperties.JobStatus",
+                    "StringMatches": "FAILED",
+                    "Next": "Send Failed Description"
+                }
+            ],
+            "Default": "Wait"
+        },
+        "Send Failed Description": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::sqs:sendMessage",
+            "Parameters": {
+                "QueueUrl": "${FailedQueue}",
+                "MessageBody": {
+                    "Reason": "CLASSIFY_FAILED",
+                    "Payload.$": "$"
+                }
+            },
+            "Next": "Fail"
+        },
+        "SplitFiles": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "OutputPath": "$.Payload",
+            "Parameters": {
+                "Payload.$": "$",
+                "FunctionName": "${SplitFilesFn}"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2
+                }
+            ],
+            "Next": "Check Split Outcome"
+        },
+        "Check Split Outcome": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.Outcome",
+                    "StringMatches": "REJECTED",
+                    "Next": "Send Failed Split",
+                    "Comment": "Rejected"
+                }
+            ],
+            "Default": "Map"
+        },
+        "Send Failed Split": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::sqs:sendMessage",
+            "Parameters": {
+                "QueueUrl": "${FailedQueue}",
+                "MessageBody": {
+                    "Reason": "SPLIT_FAILED",
+                    "Payload.$": "$"
+                }
+            },
+            "Next": "Reject"
+        },
+        "Reject": {
+            "Type": "Fail"
+        },
+        "Map": {
+            "Type": "Map",
+            "ItemProcessor": {
+                "ProcessorConfig": {
+                    "Mode": "DISTRIBUTED",
+                    "ExecutionType": "STANDARD"
+                },
+                "StartAt": "ProcessFile",
+                "States": {
+                    "ProcessFile": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:states:::lambda:invoke",
+                        "OutputPath": "$.Payload",
+                        "Parameters": {
+                            "Payload.$": "$",
+                            "FunctionName": "${ProcessFileFn}"
+                        },
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.SdkClientException",
+                                    "Lambda.TooManyRequestsException"
+                                ],
+                                "IntervalSeconds": 1,
+                                "MaxAttempts": 3,
+                                "BackoffRate": 2
+                            }
+                        ],
+                        "Next": "Check Process Outcome"
+                    },
+                    "Check Process Outcome": {
+                        "Type": "Choice",
+                        "Choices": [
+                            {
+                                "Variable": "$.Outcome",
+                                "StringMatches": "REJECTED",
+                                "Next": "Send Failed Item",
+                                "Comment": "Rejected"
+                            }
+                        ],
+                        "Default": "PromptDocumentInfo"
+                    },
+                    "Send Failed Item": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:states:::sqs:sendMessage",
+                        "Parameters": {
+                            "QueueUrl": "${FailedQueue}",
+                            "MessageBody": {
+                                "Reason": "PROCESS_ITEM_FAILED",
+                                "Payload.$": "$"
+                            }
+                        },
+                        "End": true
+                    },
+                    "PromptDocumentInfo": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:states:::lambda:invoke",
+                        "OutputPath": "$.Payload",
+                        "Parameters": {
+                            "Payload.$": "$",
+                            "FunctionName": "${PromptDocumentInfoFn}"
+                        },
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "States.ALL"
+                                ],
+                                "BackoffRate": 2,
+                                "IntervalSeconds": 5,
+                                "MaxAttempts": 20
+                            }
+                        ],
+                        "Next": "Check Prompt Outcome"
+                    },
+                    "Check Prompt Outcome": {
+                        "Type": "Choice",
+                        "Choices": [
+                            {
+                                "Variable": "$.Outcome",
+                                "StringMatches": "REJECTED",
+                                "Next": "Send Failed Item",
+                                "Comment": "Rejected"
+                            }
+                        ],
+                        "Default": "Send Result"
+                    },
+                    "Send Result": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:states:::sqs:sendMessage",
+                        "Parameters": {
+                            "MessageBody.$": "$",
+                            "QueueUrl": "${ProcessedQueue}"
+                        },
+                        "End": true
+                    }
+                }
+            },
+            "Next": "Success",
+            "Label": "Map",
+            "MaxConcurrency": 1000,
+            "ItemSelector": {
+                "ExecutionId.$": "$$.Map.Item.Value.ExecutionId",
+                "WorkBucket.$": "$WorkBucket",
+                "WorkPrefix.$": "$WorkPrefix",
+                "MapIndex.$": "$$.Map.Item.Index",
+                "Source.$": "$$.Map.Item.Value.Source",
+                "Pages.$": "$$.Map.Item.Value.Pages"
+            },
+            "InputPath": "$.Documents"
+        },
+        "Wait": {
+            "Type": "Wait",
+            "Seconds": 60,
+            "Next": "DescribeDocumentClassificationJob",
+            "OutputPath": "$.DocumentClassificationJobProperties"
+        },
+        "Success": {
+            "Type": "Succeed"
+        },
+        "Fail": {
+            "Type": "Fail"
+        }
+    }
+}

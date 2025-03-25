@@ -1,0 +1,329 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Split up a stack of similar files and extract certain properties from the file
+
+Resources:
+
+  ClassifierArnParam:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Value: blank
+
+  TrainBucket:
+    Type: AWS::S3::Bucket
+    Properties: {}
+
+  ProcessBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireAfter7Days
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+            Status: Enabled
+            ExpirationInDays: 7
+
+  ResultBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireAfter7Days
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+            Status: Enabled
+            ExpirationInDays: 7
+
+  ProcessedQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AWS::StackName}-ProcessedQueue
+
+  FailedQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AWS::StackName}-FailedQueue
+
+  ComprehendServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - comprehend.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AllowS3Crud
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Join
+                    - ''
+                    - - !GetAtt TrainBucket.Arn
+                      - /*
+                  - !Join
+                    - ''
+                    - - !GetAtt ResultBucket.Arn
+                      - /*
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Join
+                    - ''
+                    - - !GetAtt TrainBucket.Arn
+                      - /*
+                  - !Join
+                    - ''
+                    - - !GetAtt ResultBucket.Arn
+                      - /*
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource:
+                  - !GetAtt TrainBucket.Arn
+                  - !GetAtt ResultBucket.Arn
+
+  TrainClassifierStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      DefinitionSubstitutions:
+        DataAccessRoleArn: !GetAtt ComprehendServiceRole.Arn
+        TrainBucket: !Ref TrainBucket
+        ClassifierParameter: !Ref ClassifierArnParam
+      Policies:
+        - arn:aws:iam::aws:policy/ComprehendFullAccess
+        - TextractPolicy: {}
+        - S3FullAccessPolicy:
+            BucketName: !Ref TrainBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:DescribeParameters
+                - ssm:GetParameter
+                - ssm:GetParameters
+                - ssm:GetParametersByPath
+                - ssm:PutParameter
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ClassifierArnParam}
+        - Statement:
+            - Effect: Allow
+              Action:
+                - iam:PassRole
+              Resource: arn:aws:iam::*:role/*Comprehend*
+      DefinitionUri: statemachine/train-classifier.asl.json
+
+  SplitFilesFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: |
+        Function that takes in the classification results and splits the document into multiple documents.
+      CodeUri: functions/split_files
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      MemorySize: 4096
+      Timeout: 900
+      EphemeralStorage:
+        Size: 512
+      Architectures:
+        - arm64
+      Policies:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - S3FullAccessPolicy:
+            BucketName: !Ref ResultBucket
+
+  ProcessFileFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: |
+        Function that generates a single document from the stack of documents.
+      CodeUri: functions/process_file
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      MemorySize: 4096
+      Timeout: 900
+      Tracing: Active
+      Architectures:
+        - arm64
+      Policies:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - S3FullAccessPolicy:
+            BucketName: !Ref ResultBucket
+
+  PromptDocumentInfoFn:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: |
+        Function that executes a prompt to turn the document in a json format of a given schema.
+      CodeUri: functions/bedrockProcessor
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      MemorySize: 4096
+      Timeout: 900
+      Architectures:
+        - arm64
+      Policies:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource: '*'
+        - S3FullAccessPolicy:
+            BucketName: !Ref ResultBucket
+
+  ProcessFileStackStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Type: STANDARD
+      DefinitionSubstitutions:
+        DataAccessRoleArn: !GetAtt ComprehendServiceRole.Arn
+        ClassifierParameter: !Ref ClassifierArnParam
+        ProcessedQueue: !Ref ProcessedQueue
+        FailedQueue: !Ref FailedQueue
+        SplitFilesFn: !Ref SplitFilesFn
+        ProcessFileFn: !Ref ProcessFileFn
+        PromptDocumentInfoFn: !Ref PromptDocumentInfoFn
+        ResultBucket: !Ref ResultBucket
+      Events:
+        StateChange:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: default
+            Pattern:
+              source:
+                - aws.s3
+              detail-type:
+                - Object Created
+              detail:
+                bucket:
+                  name:
+                    - !Ref ProcessBucket
+      Policies:
+        - arn:aws:iam::aws:policy/ComprehendReadOnly
+        - TextractPolicy: {}
+        - SSMParameterReadPolicy:
+            ParameterName: !Ref ClassifierArnParam
+        - S3ReadPolicy:
+            BucketName: !Ref ProcessBucket
+        - S3CrudPolicy:
+            BucketName: !Ref ResultBucket
+        - StepFunctionsExecutionPolicy:
+            StateMachineName: '*'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - iam:PassRole
+              Resource: arn:aws:iam::*:role/*Comprehend*
+        - Statement:
+            - Effect: Allow
+              Action:
+                - comprehend:StartDocumentClassificationJob
+              Resource: '*'
+        - LambdaInvokePolicy:
+            FunctionName: !Ref SplitFilesFn
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ProcessFileFn
+        - LambdaInvokePolicy:
+            FunctionName: !Ref PromptDocumentInfoFn
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ProcessedQueue.QueueName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt FailedQueue.QueueName
+      DefinitionUri: statemachine/process-file-stack.asl.json
+
+  ProcessingPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: IDPPipelineProcessingPolicy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # SQS Permissions for reading from ProcessedQueue and FailedQueue
+          - Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+            Resource:
+              - !GetAtt ProcessedQueue.Arn
+              - !GetAtt FailedQueue.Arn
+
+          # S3 Permissions for ProcessBucket and ResultBucket
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource:
+              - !GetAtt ProcessBucket.Arn
+              - !GetAtt ResultBucket.Arn
+
+          # S3 Object-level permissions for ProcessBucket and ResultBucket
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource:
+              - !Sub ${ProcessBucket.Arn}/*
+              - !Sub ${ResultBucket.Arn}/*
+
+Outputs:
+  TrainBucket:
+    Description: Name of the Amazon S3 training bucket
+    Value: !Ref TrainBucket
+  TrainClassifierStateMachine:
+    Description: Start this state machine to train a new classifier.
+    Value: !GetAtt TrainClassifierStateMachine.Name
+  ProcessBucket:
+    Description: Name of the Amazon S3 processing bucket
+    Value: !Ref ProcessBucket
+  ResultBucket:
+    Description: Name of the Amazon S3 bucket containing the results of the processing
+    Value: !Ref ResultBucket
+  ProcessedQueue:
+    Description: Name of the Amazon SQS queue that will receive the processed documents
+    Value: !Ref ProcessedQueue
+  FailedQueue:
+    Description: Name of the Amazon SQS queue that will receive the failures
+    Value: !Ref FailedQueue
+  ProcessingPolicy:
+    Description: IAM Managed Policy with minimal permissions to upload files and
+      process results
+    Value: !Ref ProcessingPolicy
+Metadata:
+  AWS::Composer::Groups:
+    Group:
+      Label: Training
+      Members:
+        - ClassifierArnParam
+        - TrainClassifierStateMachine
+        - TrainBucket
+    Group2:
+      Label: Processing
+      Members:
+        - PromptDocumentInfoFn
+        - ProcessFileFn
+        - SplitFilesFn
+        - FailedQueue
+        - ProcessedQueue
+        - ProcessFileStackStateMachine
+        - ImplicitEventRule
+        - ProcessingPolicy
+        - ProcessBucket
+        - ResultBucket
