@@ -22,7 +22,7 @@ PageType,FileName,PageNumber
 
 
 ## Bedrock
-Make sure to enable model access for `claude` and to fill in the prompt in `functions/bedrockProcessor/prompt.py` (see `prompt.example.py`). `prompt.py` is .gitignored by default, make sure to remove it from `.gitignore` if you want to keep it.
+Make sure to enable model access for `Amazon Nova Lite` and to fill in the prompt in `functions/bedrockProcessor/prompt.py` (see `prompt.example.py`). `prompt.py` is .gitignored by default, make sure to remove it from `.gitignore` if you want to keep it.
 
 ## Deploying
 Deployment can be done through the aws sam cli.
