@@ -227,7 +227,6 @@
                     "PromptDocumentInfo": {
                         "Type": "Task",
                         "Resource": "arn:aws:states:::lambda:invoke",
-                        "OutputPath": "$.Payload",
                         "Parameters": {
                             "Payload.$": "$",
                             "FunctionName": "${PromptDocumentInfoFn}"
@@ -246,6 +245,7 @@
                         "ResultSelector": {
                             "OutputBucket.$": "$.Payload.OutputBucket",
                             "OutputKey.$": "$.Payload.OutputKey",
+                            "Outcome.$": "$.Payload.Outcome",
                             "Result.$": "$.Payload.Result"
                         }
                     },

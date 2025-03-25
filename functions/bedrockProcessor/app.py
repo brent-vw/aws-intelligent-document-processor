@@ -52,7 +52,7 @@ def lambda_handler(event, _):
 def upload_to_s3(event):
     work_bucket = event["WorkBucket"]
     work_prefix = event["OutputFolder"]
-    object_key = f'{work_prefix}/result.json'
+    object_key = f'{work_prefix}result.json'
 
     #  upload to S3
     s3.put_object(Bucket=work_bucket, Key=object_key, Body=json.dumps(event))
