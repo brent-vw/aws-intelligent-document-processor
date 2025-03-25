@@ -2,8 +2,22 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Split up a stack of similar files and extract certain properties from the file
 
-Resources:
+Globals:
+  Function:
+    Runtime: python3.12
+    Tracing: Active
+    MemorySize: 4096
+    Timeout: 900
+    Architectures:
+      - arm64
+    Layers:
+      - !Sub arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-arm64:11
+    Environment:
+      Variables:
+        POWERTOOLS_SERVICE_NAME: intelligent-document-processor
+        POWERTOOLS_LOG_LEVEL: INFO
 
+Resources:
   ClassifierArnParam:
     Type: AWS::SSM::Parameter
     Properties:
@@ -138,13 +152,6 @@ Resources:
       CodeUri: functions/split_files
       Handler: app.lambda_handler
       Runtime: python3.12
-      MemorySize: 4096
-      Timeout: 900
-      Tracing: Active
-      EphemeralStorage:
-        Size: 512
-      Architectures:
-        - arm64
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
@@ -158,12 +165,6 @@ Resources:
         Function that generates a single document from the stack of documents.
       CodeUri: functions/process_file
       Handler: app.lambda_handler
-      Runtime: python3.12
-      MemorySize: 4096
-      Timeout: 900
-      Tracing: Active
-      Architectures:
-        - arm64
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess
@@ -177,12 +178,6 @@ Resources:
         Function that executes a prompt to turn the document in a json format of a given schema.
       CodeUri: functions/bedrockProcessor
       Handler: app.lambda_handler
-      Runtime: python3.12
-      MemorySize: 4096
-      Timeout: 900
-      Tracing: Active
-      Architectures:
-        - arm64
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AWSXrayWriteOnlyAccess

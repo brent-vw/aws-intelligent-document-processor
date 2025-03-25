@@ -1,3 +1,4 @@
+from aws_lambda_powertools import Tracer, Logger
 from collections import defaultdict
 import tarfile
 import boto3
@@ -6,8 +7,11 @@ from urllib.parse import urlparse
 
 MIN_CONFIDENCE_SCORE = 0.99
 s3 = boto3.resource('s3')
+tracer = Tracer()
+logger = Logger(serialize_stacktrace=True)
 
-
+@tracer.capture_lambda_handler
+@logger.inject_lambda_context
 def lambda_handler(event, _):
     """
     Parses the results from comprehend into a structured list of documents for further processing
@@ -52,6 +56,7 @@ def lambda_handler(event, _):
     """
 
     try:
+        logger.info(f"Initializing splitting.")
         pages, unprocessed_pages = process_comprehend_data(event)
         documents = classify_pages(event, pages, unprocessed_pages)
         result = {
@@ -65,9 +70,11 @@ def lambda_handler(event, _):
             result["ErrorMessage"] = "Some pages were not classified"
             result["UnprocessedPages"] = list(map(str, unprocessed_pages))
 
+        logger.info(f"Split completed (outcome = {result['Outcome']}).")
         return result
     except Exception as e:
-        print(e)
+        logger.error(f"Error during splitting: {e}")
+        logger.exception(e)
         return {
             "Outcome": "REJECTED",
             "Reason": "ERROR",
@@ -94,6 +101,7 @@ def process_comprehend_data(event):
             else:
                 parse_page(pages, tar_item, file)
 
+    logger.info(f"Processed {len(pages.keys())} pages ({len(unprocessed_pages)} unprocessed).")
     return pages, unprocessed_pages
 
 

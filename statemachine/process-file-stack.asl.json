@@ -242,7 +242,12 @@
                                 "MaxAttempts": 20
                             }
                         ],
-                        "Next": "Check Prompt Outcome"
+                        "Next": "Check Prompt Outcome",
+                        "ResultSelector": {
+                            "OutputBucket.$": "$.Payload.OutputBucket",
+                            "OutputKey.$": "$.Payload.OutputKey",
+                            "Result.$": "$.Payload.Result"
+                        }
                     },
                     "Check Prompt Outcome": {
                         "Type": "Choice",
@@ -269,7 +274,15 @@
             },
             "Next": "Success",
             "InputPath": "$.Documents",
-            "MaxConcurrency": 10
+            "MaxConcurrency": 10,
+            "ItemSelector": {
+                "ExecutionId.$": "$$.Map.Item.Value.ExecutionId",
+                "WorkBucket.$": "$WorkBucket",
+                "WorkPrefix.$": "$WorkPrefix",
+                "MapIndex.$": "$$.Map.Item.Index",
+                "Source.$": "$$.Map.Item.Value.Source",
+                "Pages.$": "$$.Map.Item.Value.Pages"
+            }
         },
         "Wait": {
             "Type": "Wait",

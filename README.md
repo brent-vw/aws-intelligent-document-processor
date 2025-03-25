@@ -36,16 +36,11 @@ Processing results are stored in 2 Amazon SQS queues a Processed Queue where the
 ### Processed Queue Format
 ```json
 {
-    "Output":"<Amazon S3 location of result pdf>",
+    "OutputBucket":"<Amazon S3 bucket of result pdf>",
+    "OutputKey":"<Amazon S3 key of result pdf>",
     "Result": {
         "": "<JSON object with attributes extracted by bedrock>"
-    },
-    "Source":"s3://aws-intelligent-document-processor-resultbucket-roofajl2zngm/20a27e05-e591-a5b2-971f-f4d3115c3876_dea4a484-9600-02df-33dc-3cbdccad2aee/source.pdf",
-    "WorkBucket":"<Amazon S3 bucket name>",
-    "WorkPrefix":"<Amazon S3 folder with all processing results>",
-    "OutputFolder":"<Amazon S3 folder with processing results for this step>",
-    "ExecutionId":"<Id of the step function execution>",
-    "MapIndex": "<number: Number of the subfile that has been processed>",
+    }
 }
 ```
 
