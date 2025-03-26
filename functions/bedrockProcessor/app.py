@@ -24,7 +24,7 @@ def lambda_handler(event, _):
     try:
         textract_results = ""
         for page in event['Pages']:
-            textract_results += f"{page['OCR']}\n"
+            textract_results += f"{download_json_from_s3(page['OCR'])}\n"
 
         logger.info(f"Creating bedrock prompt.")
         create_bedrock_prompt = bedrock_prompt(textract_results)
@@ -58,6 +58,19 @@ def upload_to_s3(event):
     s3.put_object(Bucket=work_bucket, Key=object_key, Body=json.dumps(event))
 
     return object_key
+
+def download_json_from_s3(s3_path):
+    path = s3_path.replace("s3://", "")
+    bucket, key = path.split('/', 1)
+    
+    try:
+        response = s3.get_object(Bucket=bucket, Key=key)
+        content = response['Body'].read().decode('utf-8')
+        return json.loads(content)
+        
+    except Exception as e:
+        logger.error(f"Error downloading from S3: {e}")
+        raise
 
 
 def call_bedrock(text):

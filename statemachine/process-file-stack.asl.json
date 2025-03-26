@@ -1,6 +1,14 @@
 {
-    "StartAt": "Initialize Result",
+    "StartAt": "SaveOriginalFileName",
     "States": {
+        "SaveOriginalFileName": {
+            "Type": "Pass",
+            "Parameters": {
+              "OriginalFileName.$": "$.detail.object.key",
+              "detail.$": "$.detail"
+            },
+            "Next": "Initialize Result"
+          },
         "Initialize Result": {
             "Type": "Task",
             "Parameters": {
@@ -114,6 +122,7 @@
                 "QueueUrl": "${FailedQueue}",
                 "MessageBody": {
                     "Reason": "CLASSIFY_FAILED",
+                    "OriginalFile.$": "$.OriginalFileName",
                     "Payload.$": "$"
                 }
             },

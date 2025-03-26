@@ -99,21 +99,40 @@ def process_comprehend_data(event):
             elif tar_item.name.endswith(".out"):
                 parse_manifest(pages, unprocessed_pages, file)
             else:
-                parse_page(pages, tar_item, file)
+                parse_page(event, pages, tar_item, file)
 
     logger.info(f"Processed {len(pages.keys())} pages ({len(unprocessed_pages)} unprocessed).")
     return pages, unprocessed_pages
 
 
-def parse_page(pages, item, file):
+def parse_page(event, pages, item, file):
     """
     Extract the OCR results from textract and add it to the page dict
     """
 
     page = int(item.name.split("/")[-1].strip())
-    pages[page]["OCR"] = extract_text_from_textract_results(
+    ocrResults = extract_text_from_textract_results(
         json.loads(file.read()))
+    pages[page]["OCR"] = upload_to_s3(event, ocrResults, page)
+    
+    
+def split_s3_path(s3_path: str):
+    # Remove 's3://' prefix if it exists
+    path = s3_path.replace("s3://", "")
+    
+    # Split the path into bucket and key
+    parts = path.split('/', 1)
+    bucket = parts[0]
+    key = parts[1] if len(parts) > 1 else ''
+    
+    return bucket, key
 
+def upload_to_s3(event, ocr_results, page):
+    work_bucket, work_prefix = split_s3_path(event["WorkFolder"])
+    object_key = f'{work_prefix}{page}.text'
+
+    s3.Object(work_bucket, object_key).put(Body=json.dumps(event))
+    return f"s3://{work_bucket}/{object_key}"
 
 def parse_manifest(pages: dict, unprocessed_pages: list, file):
     """
