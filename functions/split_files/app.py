@@ -131,7 +131,7 @@ def upload_to_s3(event, ocr_results, page):
     work_bucket, work_prefix = split_s3_path(event["WorkFolder"])
     object_key = f'{work_prefix}{page}.text'
 
-    s3.Object(work_bucket, object_key).put(Body=json.dumps(event))
+    s3.Object(work_bucket, object_key).put(Body=ocr_results)
     return f"s3://{work_bucket}/{object_key}"
 
 def parse_manifest(pages: dict, unprocessed_pages: list, file):
