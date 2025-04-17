@@ -42,7 +42,7 @@ def lambda_handler(event, _):
     except Exception as e:
         logger.error(f"Error during processing: {e}")
         logger.exception(e)
-        return {
+        return event | {
             "Outcome": "REJECTED",
             "Reason": "ERROR",
             "ErrorMessage": str(e)
@@ -66,7 +66,7 @@ def download_json_from_s3(s3_path):
     try:
         response = s3.get_object(Bucket=bucket, Key=key)
         content = response['Body'].read().decode('utf-8')
-        return json.loads(content)
+        return content
         
     except Exception as e:
         logger.error(f"Error downloading from S3: {e}")

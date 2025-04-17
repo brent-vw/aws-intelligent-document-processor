@@ -4,11 +4,11 @@
         "SaveOriginalFileName": {
             "Type": "Pass",
             "Parameters": {
-              "OriginalFileName.$": "$.detail.object.key",
-              "detail.$": "$.detail"
+                "OriginalFileName.$": "$.detail.object.key",
+                "detail.$": "$.detail"
             },
             "Next": "Initialize Result"
-          },
+        },
         "Initialize Result": {
             "Type": "Task",
             "Parameters": {
@@ -251,12 +251,7 @@
                             }
                         ],
                         "Next": "Check Prompt Outcome",
-                        "ResultSelector": {
-                            "OutputBucket.$": "$.Payload.OutputBucket",
-                            "OutputKey.$": "$.Payload.OutputKey",
-                            "Outcome.$": "$.Payload.Outcome",
-                            "Result.$": "$.Payload.Result"
-                        }
+                        "OutputPath": "$.Payload"
                     },
                     "Check Prompt Outcome": {
                         "Type": "Choice",
@@ -274,8 +269,13 @@
                         "Type": "Task",
                         "Resource": "arn:aws:states:::sqs:sendMessage",
                         "Parameters": {
-                            "MessageBody.$": "$",
-                            "QueueUrl": "${ProcessedQueue}"
+                            "QueueUrl": "${ProcessedQueue}",
+                            "MessageBody": {
+                                "OutputBucket.$": "$.OutputBucket",
+                                "OutputKey.$": "$.OutputKey",
+                                "Outcome.$": "$.Outcome",
+                                "Result.$": "$.Result"
+                            }
                         },
                         "End": true
                     }
