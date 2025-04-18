@@ -17,6 +17,15 @@ Globals:
         POWERTOOLS_SERVICE_NAME: intelligent-document-processor
         POWERTOOLS_LOG_LEVEL: INFO
 
+Parameters:
+  MulesoftTrustedRoleArn:
+    Description: The Arn of the mulesoft role to trust
+    Type: String
+    Default: ""
+
+Conditions:
+  HasTrustedRole: !Not [ !Equals [ !Ref MulesoftTrustedRoleArn, "" ] ]
+
 Resources:
   ClassifierArnParam:
     Type: AWS::SSM::Parameter
@@ -253,6 +262,21 @@ Resources:
             QueueName: !GetAtt FailedQueue.QueueName
       DefinitionUri: statemachine/process-file-stack.asl.json
 
+  MulesoftProcessingRole:
+    Type: AWS::IAM::Role
+    DependsOn: ProcessingPolicy
+    Condition: HasTrustedRole
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref MulesoftTrustedRoleArn
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Ref ProcessingPolicy
+
   ProcessingPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
@@ -311,7 +335,11 @@ Outputs:
   ProcessingPolicy:
     Description: IAM Managed Policy with minimal permissions to upload files and
       process results
-    Value: !Ref ProcessingPolicy
+    Value: !Ref ProcessingPolicy  
+  MulesoftProcessingRole:
+    Condition: HasTrustedRole
+    Description: IAM Role that trusts mulesoft environment
+    Value: !Ref MulesoftProcessingRole
 Metadata:
   AWS::Composer::Groups:
     Group:

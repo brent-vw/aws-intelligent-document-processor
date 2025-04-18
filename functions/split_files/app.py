@@ -78,7 +78,8 @@ def lambda_handler(event, _):
         return {
             "Outcome": "REJECTED",
             "Reason": "ERROR",
-            "ErrorMessage": str(e)
+            "ErrorMessage": str(e),
+            "UnprocessedPages": [],
         }
 
 

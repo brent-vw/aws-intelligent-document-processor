@@ -1,116 +1,116 @@
 {
-    "StartAt": "CreateDocumentClassifier",
-    "States": {
-        "CreateDocumentClassifier": {
-            "Type": "Task",
-            "Parameters": {
-                "DataAccessRoleArn": "${DataAccessRoleArn}",
-                "DocumentClassifierName.$": "$$.Execution.Name",
-                "InputDataConfig": {
-                    "DataFormat": "COMPREHEND_CSV",
-                    "S3Uri.$": "States.Format('s3://{}/manifest.csv', '${TrainBucket}')",
-                    "DocumentType": "SEMI_STRUCTURED_DOCUMENT",
-                    "Documents": {
-                        "S3Uri.$": "States.Format('s3://{}/train_data/', '${TrainBucket}')"
-                    },
-                    "DocumentReaderConfig": {
-                        "DocumentReadAction": "TEXTRACT_DETECT_DOCUMENT_TEXT",
-                        "DocumentReadMode": "SERVICE_DEFAULT"
-                    }
-                },
-                "LanguageCode": "en",
-                "OutputDataConfig": {
-                    "S3Uri.$": "States.Format('s3://{}/train_output/', '${TrainBucket}')"
-                }
-            },
-            "Resource": "arn:aws:states:::aws-sdk:comprehend:createDocumentClassifier",
-            "Next": "DescribeDocumentClassifier"
-        },
-        "DescribeDocumentClassifier": {
-            "Type": "Task",
-            "Parameters": {
-                "DocumentClassifierArn.$": "$.DocumentClassifierArn"
-            },
-            "Resource": "arn:aws:states:::aws-sdk:comprehend:describeDocumentClassifier",
-            "Next": "Choice"
-        },
-        "Choice": {
-            "Type": "Choice",
-            "Choices": [
-                {
-                    "Or": [
-                        {
-                            "Variable": "$.DocumentClassifierProperties.Status",
-                            "StringMatches": "SUBMITTED"
-                        },
-                        {
-                            "Variable": "$.DocumentClassifierProperties.Status",
-                            "StringMatches": "TRAINING"
-                        },
-                        {
-                            "Variable": "$.DocumentClassifierProperties.Status",
-                            "StringMatches": "DELETING"
-                        },
-                        {
-                            "Variable": "$.DocumentClassifierProperties.Status",
-                            "StringMatches": "STOP_REQUESTED"
-                        }
-                    ],
-                    "Next": "Wait",
-                    "Comment": "Busy"
-                },
-                {
-                    "Or": [
-                        {
-                            "Variable": "$.DocumentClassifierProperties.Status",
-                            "StringMatches": "STOPPED"
-                        },
-                        {
-                            "Variable": "$.DocumentClassifierProperties.Status",
-                            "StringMatches": "IN_ERROR"
-                        }
-                    ],
-                    "Comment": "Failed",
-                    "Next": "Fail"
-                },
-                {
-                    "Or": [
-                        {
-                            "Variable": "$.DocumentClassifierProperties.Status",
-                            "StringMatches": "TRAINED"
-                        },
-                        {
-                            "Variable": "$.DocumentClassifierProperties.Status",
-                            "StringMatches": "TRAINED_WITH_WARNING"
-                        }
-                    ],
-                    "Comment": "Success",
-                    "Next": "PutParameter"
-                }
-            ],
-            "Default": "Fail"
-        },
-        "Wait": {
-            "Type": "Wait",
-            "Seconds": 120,
-            "Next": "DescribeDocumentClassifier",
-            "OutputPath": "$.DocumentClassifierProperties"
-        },
-        "Fail": {
-            "Type": "Fail"
-        },
-        "PutParameter": {
-            "Type": "Task",
-            "Parameters": {
-                "Name": "${ClassifierParameter}",
-                "Value.$": "$.DocumentClassifierProperties.DocumentClassifierArn",
-                "Overwrite": true
-            },
-            "Resource": "arn:aws:states:::aws-sdk:ssm:putParameter",
-            "Next": "Success"
-        },
-        "Success": {
-            "Type": "Succeed"
-        }
-    }
+	"StartAt": "CreateDocumentClassifier",
+	"States": {
+		"CreateDocumentClassifier": {
+			"Type": "Task",
+			"Parameters": {
+				"DataAccessRoleArn": "${DataAccessRoleArn}",
+				"DocumentClassifierName.$": "$$.Execution.Name",
+				"InputDataConfig": {
+					"DataFormat": "COMPREHEND_CSV",
+					"S3Uri.$": "States.Format('s3://{}/manifest.csv', '${TrainBucket}')",
+					"DocumentType": "SEMI_STRUCTURED_DOCUMENT",
+					"Documents": {
+						"S3Uri.$": "States.Format('s3://{}/train_data/', '${TrainBucket}')"
+					},
+					"DocumentReaderConfig": {
+						"DocumentReadAction": "TEXTRACT_DETECT_DOCUMENT_TEXT",
+						"DocumentReadMode": "SERVICE_DEFAULT"
+					}
+				},
+				"LanguageCode": "en",
+				"OutputDataConfig": {
+					"S3Uri.$": "States.Format('s3://{}/train_output/', '${TrainBucket}')"
+				}
+			},
+			"Resource": "arn:aws:states:::aws-sdk:comprehend:createDocumentClassifier",
+			"Next": "DescribeDocumentClassifier"
+		},
+		"DescribeDocumentClassifier": {
+			"Type": "Task",
+			"Parameters": {
+				"DocumentClassifierArn.$": "$.DocumentClassifierArn"
+			},
+			"Resource": "arn:aws:states:::aws-sdk:comprehend:describeDocumentClassifier",
+			"Next": "Choice"
+		},
+		"Choice": {
+			"Type": "Choice",
+			"Choices": [
+				{
+					"Or": [
+						{
+							"Variable": "$.DocumentClassifierProperties.Status",
+							"StringMatches": "SUBMITTED"
+						},
+						{
+							"Variable": "$.DocumentClassifierProperties.Status",
+							"StringMatches": "TRAINING"
+						},
+						{
+							"Variable": "$.DocumentClassifierProperties.Status",
+							"StringMatches": "DELETING"
+						},
+						{
+							"Variable": "$.DocumentClassifierProperties.Status",
+							"StringMatches": "STOP_REQUESTED"
+						}
+					],
+					"Next": "Wait",
+					"Comment": "Busy"
+				},
+				{
+					"Or": [
+						{
+							"Variable": "$.DocumentClassifierProperties.Status",
+							"StringMatches": "STOPPED"
+						},
+						{
+							"Variable": "$.DocumentClassifierProperties.Status",
+							"StringMatches": "IN_ERROR"
+						}
+					],
+					"Comment": "Failed",
+					"Next": "Fail"
+				},
+				{
+					"Or": [
+						{
+							"Variable": "$.DocumentClassifierProperties.Status",
+							"StringMatches": "TRAINED"
+						},
+						{
+							"Variable": "$.DocumentClassifierProperties.Status",
+							"StringMatches": "TRAINED_WITH_WARNING"
+						}
+					],
+					"Comment": "Success",
+					"Next": "PutParameter"
+				}
+			],
+			"Default": "Fail"
+		},
+		"Wait": {
+			"Type": "Wait",
+			"Seconds": 120,
+			"Next": "DescribeDocumentClassifier",
+			"OutputPath": "$.DocumentClassifierProperties"
+		},
+		"Fail": {
+			"Type": "Fail"
+		},
+		"PutParameter": {
+			"Type": "Task",
+			"Parameters": {
+				"Name": "${ClassifierParameter}",
+				"Value.$": "$.DocumentClassifierProperties.DocumentClassifierArn",
+				"Overwrite": true
+			},
+			"Resource": "arn:aws:states:::aws-sdk:ssm:putParameter",
+			"Next": "Success"
+		},
+		"Success": {
+			"Type": "Succeed"
+		}
+	}
 }

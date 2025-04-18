@@ -121,9 +121,12 @@
             "Parameters": {
                 "QueueUrl": "${FailedQueue}",
                 "MessageBody": {
-                    "Reason": "CLASSIFY_FAILED",
-                    "OriginalFile.$": "$.OriginalFileName",
-                    "Payload.$": "$"
+                    "status": "CLASSIFY_FAILED",
+                    "payload": {
+                        "outcome": "REJECTED",
+                        "reason.$": "$.JobStatus",
+                        "errorMessage.$": "$.Message"
+                    }
                 }
             },
             "Next": "Fail"
@@ -169,8 +172,13 @@
             "Parameters": {
                 "QueueUrl": "${FailedQueue}",
                 "MessageBody": {
-                    "Reason": "SPLIT_FAILED",
-                    "Payload.$": "$"
+                    "status": "SPLIT_FAILED",
+                    "payload": {
+                        "outcome": "REJECTED",
+                        "reason.$": "$.Reason",
+                        "errorMessage.$": "$.ErrorMessage",
+                        "unprocessedPages.$": "$.UnprocessedPages"
+                    }
                 }
             },
             "Next": "Reject"
@@ -227,8 +235,12 @@
                         "Parameters": {
                             "QueueUrl": "${FailedQueue}",
                             "MessageBody": {
-                                "Reason": "PROCESS_ITEM_FAILED",
-                                "Payload.$": "$"
+                                "reason": "PROCESS_ITEM_FAILED",
+                                "payload": {
+                                    "outcome.$": "$.Outcome",
+                                    "reason.$": "$.Reason",
+                                    "errorMessage.$": "$.ErrorMessage"
+                                }
                             }
                         },
                         "End": true
@@ -271,10 +283,12 @@
                         "Parameters": {
                             "QueueUrl": "${ProcessedQueue}",
                             "MessageBody": {
-                                "OutputBucket.$": "$.OutputBucket",
-                                "OutputKey.$": "$.OutputKey",
-                                "Outcome.$": "$.Outcome",
-                                "Result.$": "$.Result"
+                                "status": "SUCCESS",
+                                "output": {
+                                    "bucketName.$": "$.OutputBucket",
+                                    "objectKey.$": "$.OutputKey"
+                                },
+                                "extractedData.$": "$.Result"
                             }
                         },
                         "End": true
